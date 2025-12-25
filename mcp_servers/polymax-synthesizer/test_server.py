@@ -563,3 +563,518 @@ def test_synthesize_domains_tool():
     # Verify next_step is provided
     assert "next_step" in result_data
     assert "generate_section" in result_data["next_step"] or "generate_manuscript" in result_data["next_step"]
+
+def test_detect_field_from_domains():
+    """Test field detection from domains."""
+    from section_generator import detect_field_from_domains
+
+    # Medical imaging domains
+    assert detect_field_from_domains(["spatial-transcriptomics", "medical-imaging"]) == "medical_imaging"
+    assert detect_field_from_domains(["digital-pathology"]) == "medical_imaging"
+
+    # Genomics domains
+    assert detect_field_from_domains(["genomics", "sequencing"]) == "genomics"
+    assert detect_field_from_domains(["metagenomics"]) == "genomics"
+
+    # Machine learning domains
+    assert detect_field_from_domains(["deep-learning", "machine-learning"]) == "machine_learning"
+    assert detect_field_from_domains(["neural-networks"]) == "machine_learning"
+
+    # Default case
+    assert detect_field_from_domains(["unknown-domain"]) == "machine_learning"
+    assert detect_field_from_domains([]) == "machine_learning"
+
+def test_generate_section_primary_research():
+    """Test section generation in primary research mode."""
+    from section_generator import generate_section
+    from pathlib import Path
+    from database import Database
+    import json
+
+    DB_PATH = Path(__file__).parent / "papers.db"
+
+    # Create synthesis run with main_finding
+    with Database(str(DB_PATH)) as db:
+        cursor = db.conn.execute(
+            """INSERT INTO synthesis_runs
+               (repo_path, mode, detected_domains, main_finding, status)
+               VALUES (?, ?, ?, ?, 'writing')""",
+            (
+                "/test/repo",
+                "primary_research",
+                json.dumps(["spatial-transcriptomics"]),
+                json.dumps({
+                    "key_findings": [
+                        {
+                            "claim": "Poisson loss improved SSIM from 0.193 to 0.605",
+                            "evidence": "Table 1",
+                            "value": 0.605
+                        }
+                    ],
+                    "tables": [{"name": "Table 1", "path": "/test/tables/results.csv"}],
+                    "figures": [{"name": "Figure 1", "path": "/test/figures/results.png"}]
+                })
+            )
+        )
+        db.conn.commit()
+        synthesis_run_id = cursor.lastrowid
+
+    # Generate results section
+    section_text = generate_section(
+        synthesis_run_id=synthesis_run_id,
+        section="results",
+        manuscript_mode="primary_research",
+        db_path=str(DB_PATH)
+    )
+
+    # Verify LaTeX structure
+    assert "section{Results}" in section_text or "section*{Results}" in section_text
+    assert "0.605" in section_text  # Contains actual value from findings
+    assert "Table~\\ref" in section_text or "Table 1" in section_text  # Proper table reference
+    assert len(section_text) > 100  # Non-trivial content
+
+def test_generate_section_review_mode():
+    """Test section generation in review mode."""
+    from section_generator import generate_section
+    from pathlib import Path
+    from database import Database
+    import json
+
+    DB_PATH = Path(__file__).parent / "papers.db"
+
+    # Create synthesis run with domain syntheses
+    with Database(str(DB_PATH)) as db:
+        # Create domain
+        cursor = db.conn.execute(
+            "INSERT OR IGNORE INTO domains (name, description) VALUES (?, ?)",
+            ("spatial-transcriptomics", "Spatial gene expression analysis")
+        )
+        db.conn.commit()
+
+        cursor = db.conn.execute("SELECT id FROM domains WHERE name=?", ("spatial-transcriptomics",))
+        domain_id = cursor.fetchone()["id"]
+
+        # Create synthesis run
+        cursor = db.conn.execute(
+            """INSERT INTO synthesis_runs
+               (repo_path, mode, detected_domains, status)
+               VALUES (?, ?, ?, 'writing')""",
+            ("/test/repo", "review", json.dumps(["spatial-transcriptomics"]))
+        )
+        db.conn.commit()
+        synthesis_run_id = cursor.lastrowid
+
+        # Create domain synthesis
+        db.conn.execute(
+            """INSERT INTO domain_syntheses
+               (synthesis_run_id, domain_id, summary_markdown, papers_analyzed)
+               VALUES (?, ?, ?, 3)""",
+            (
+                synthesis_run_id,
+                domain_id,
+                "# Spatial Transcriptomics\n\n## Key Findings\n\nPoisson loss improves sparse data modeling.\n\n## Statistical Approaches\n\nGLM with Poisson regression."
+            )
+        )
+        db.conn.commit()
+
+    # Generate discussion section
+    section_text = generate_section(
+        synthesis_run_id=synthesis_run_id,
+        section="discussion",
+        manuscript_mode="review",
+        db_path=str(DB_PATH)
+    )
+
+    # Verify LaTeX structure
+    assert "section{Discussion}" in section_text or "section*{Discussion}" in section_text
+    assert "Poisson" in section_text  # Contains content from domain synthesis
+    assert len(section_text) > 100  # Non-trivial content
+
+def test_latex_templates_exist():
+    """Test that LaTeX templates exist and are valid."""
+    from pathlib import Path
+
+    templates_dir = Path(__file__).parent / "templates"
+    assert templates_dir.exists(), "templates/ directory should exist"
+
+    # Check all three templates exist
+    medical_imaging = templates_dir / "medical_imaging.tex"
+    genomics = templates_dir / "genomics.tex"
+    machine_learning = templates_dir / "machine_learning.tex"
+
+    assert medical_imaging.exists(), "medical_imaging.tex template should exist"
+    assert genomics.exists(), "genomics.tex template should exist"
+    assert machine_learning.exists(), "machine_learning.tex template should exist"
+
+    # Verify templates have required placeholders
+    for template_file in [medical_imaging, genomics, machine_learning]:
+        content = template_file.read_text()
+        assert "{{TITLE}}" in content
+        assert "{{AUTHORS}}" in content
+        assert "{{ABSTRACT}}" in content
+        assert "{{INTRODUCTION}}" in content
+        assert "{{METHODS}}" in content
+        assert "{{RESULTS}}" in content
+        assert "{{DISCUSSION}}" in content
+        assert "{{BIBLIOGRAPHY}}" in content
+
+def test_latex_non_breaking_spaces():
+    """Test that generated LaTeX uses non-breaking spaces for references."""
+    from section_generator import generate_section
+    from pathlib import Path
+    from database import Database
+    import json
+
+    DB_PATH = Path(__file__).parent / "papers.db"
+
+    # Create synthesis run
+    with Database(str(DB_PATH)) as db:
+        cursor = db.conn.execute(
+            """INSERT INTO synthesis_runs
+               (repo_path, mode, detected_domains, main_finding, status)
+               VALUES (?, ?, ?, ?, 'writing')""",
+            (
+                "/test/repo",
+                "primary_research",
+                json.dumps(["spatial-transcriptomics"]),
+                json.dumps({
+                    "key_findings": [{"claim": "Test finding", "evidence": "Table 1"}],
+                    "tables": [{"name": "Table 1", "path": "/test/table.csv"}],
+                    "figures": [{"name": "Figure 1", "path": "/test/fig.png"}]
+                })
+            )
+        )
+        db.conn.commit()
+        synthesis_run_id = cursor.lastrowid
+
+    section_text = generate_section(
+        synthesis_run_id=synthesis_run_id,
+        section="results",
+        manuscript_mode="primary_research",
+        db_path=str(DB_PATH)
+    )
+
+    # Should use ~ for non-breaking space, not regular space
+    # Good: Figure~\ref{fig:label} or Table~\ref{tab:label}
+    # Bad: Figure \ref or Table \ref
+    import re
+    if "\\ref" in section_text:
+        # Check for proper non-breaking spaces before \ref
+        bad_refs = re.findall(r'(Figure|Table)\s+\\ref', section_text)
+        assert len(bad_refs) == 0, f"Found references without non-breaking space: {bad_refs}"
+
+def test_generate_section_tool():
+    """Test generate_section MCP tool."""
+    from server import call_tool
+    from pathlib import Path
+    from database import Database
+    import json
+    import asyncio
+
+    DB_PATH = Path(__file__).parent / "papers.db"
+
+    # Create synthesis run
+    with Database(str(DB_PATH)) as db:
+        cursor = db.conn.execute(
+            """INSERT INTO synthesis_runs
+               (repo_path, mode, detected_domains, main_finding, status)
+               VALUES (?, ?, ?, ?, 'writing')""",
+            (
+                "/test/repo",
+                "primary_research",
+                json.dumps(["spatial-transcriptomics"]),
+                json.dumps({
+                    "key_findings": [{"claim": "Test", "evidence": "Table 1"}],
+                    "tables": [],
+                    "figures": []
+                })
+            )
+        )
+        db.conn.commit()
+        synthesis_run_id = cursor.lastrowid
+
+    # Call generate_section tool
+    result = asyncio.run(call_tool(
+        "generate_section",
+        {
+            "synthesis_run_id": synthesis_run_id,
+            "section": "results",
+            "mode": "primary_research"
+        }
+    ))
+
+    # Parse result
+    assert len(result) == 1
+    result_text = result[0].text
+    result_data = json.loads(result_text)
+
+    # Verify response structure
+    assert "synthesis_run_id" in result_data
+    assert "section" in result_data
+    assert "mode" in result_data
+    assert "field" in result_data
+    assert "preview" in result_data
+    assert len(result_data["preview"]) <= 200  # First 200 chars
+
+    # Verify database was updated
+    with Database(str(DB_PATH)) as db:
+        cursor = db.conn.execute(
+            "SELECT results FROM manuscripts WHERE synthesis_run_id=?",
+            (synthesis_run_id,)
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert len(row["results"]) > 0
+
+def test_section_prompts_exist():
+    """Test that section prompt templates are defined."""
+    from prompts.section_prompts import (
+        RESULTS_PROMPT,
+        METHODS_PROMPT,
+        DISCUSSION_PROMPT,
+        INTRODUCTION_PROMPT
+    )
+
+    # All prompts should exist and be non-empty
+    assert len(RESULTS_PROMPT) > 100
+    assert len(METHODS_PROMPT) > 100
+    assert len(DISCUSSION_PROMPT) > 100
+    assert len(INTRODUCTION_PROMPT) > 100
+
+    # Results prompt should mention table citations
+    assert "Table" in RESULTS_PROMPT or "table" in RESULTS_PROMPT
+    assert "cite" in RESULTS_PROMPT.lower()
+
+    # Methods prompt should mention algorithms
+    assert "algorithm" in METHODS_PROMPT.lower() or "method" in METHODS_PROMPT.lower()
+
+    # Discussion prompt should mention cross-field
+    assert "cross-field" in DISCUSSION_PROMPT.lower() or "transfer" in DISCUSSION_PROMPT.lower()
+
+    # All prompts should mention LaTeX formatting
+    for prompt in [RESULTS_PROMPT, METHODS_PROMPT, DISCUSSION_PROMPT, INTRODUCTION_PROMPT]:
+        assert "~" in prompt or "non-breaking" in prompt.lower()
+
+def test_generate_manuscript_tool():
+    """Test generate_manuscript orchestration tool."""
+    from server import call_tool
+    from pathlib import Path
+    from database import Database
+    import json
+    import asyncio
+
+    DB_PATH = Path(__file__).parent / "papers.db"
+
+    # Create synthesis run with domain syntheses
+    with Database(str(DB_PATH)) as db:
+        # Create domain
+        cursor = db.conn.execute(
+            "INSERT OR IGNORE INTO domains (name, description) VALUES (?, ?)",
+            ("spatial-transcriptomics", "Spatial gene expression analysis")
+        )
+        db.conn.commit()
+
+        cursor = db.conn.execute("SELECT id FROM domains WHERE name=?", ("spatial-transcriptomics",))
+        domain_id = cursor.fetchone()["id"]
+
+        # Create synthesis run
+        cursor = db.conn.execute(
+            """INSERT INTO synthesis_runs
+               (repo_path, mode, detected_domains, status, main_finding)
+               VALUES (?, ?, ?, 'writing', ?)""",
+            (
+                "/test/repo",
+                "primary_research",
+                json.dumps(["spatial-transcriptomics"]),
+                json.dumps({
+                    "key_findings": [{"claim": "Test finding", "evidence": "Table 1", "value": 0.5}],
+                    "tables": [{"name": "Table 1", "path": "/test/table.csv"}],
+                    "figures": [{"name": "Figure 1", "path": "/test/fig.png"}]
+                })
+            )
+        )
+        db.conn.commit()
+        synthesis_run_id = cursor.lastrowid
+
+        # Create domain synthesis
+        db.conn.execute(
+            """INSERT INTO domain_syntheses
+               (synthesis_run_id, domain_id, summary_markdown, papers_analyzed)
+               VALUES (?, ?, ?, 3)""",
+            (
+                synthesis_run_id,
+                domain_id,
+                "# Spatial Transcriptomics\n\n## Key Findings\n\nTest findings.\n"
+            )
+        )
+        db.conn.commit()
+
+    # Call generate_manuscript tool
+    result = asyncio.run(call_tool(
+        "generate_manuscript",
+        {
+            "synthesis_run_id": synthesis_run_id,
+            "mode": "research"
+        }
+    ))
+
+    # Parse result
+    assert len(result) == 1
+    result_text = result[0].text
+    result_data = json.loads(result_text)
+
+    # Verify response structure
+    assert "status" in result_data
+    assert result_data["status"] == "complete"
+    assert "manuscript_id" in result_data
+    assert "field" in result_data
+    assert "latex_preview" in result_data
+    assert len(result_data["latex_preview"]) > 0
+    assert "next_step" in result_data
+
+    # Verify database was updated
+    with Database(str(DB_PATH)) as db:
+        # Check synthesis_run status changed to 'complete'
+        cursor = db.conn.execute(
+            "SELECT status FROM synthesis_runs WHERE id=?",
+            (synthesis_run_id,)
+        )
+        row = cursor.fetchone()
+        assert row["status"] == "complete"
+
+        # Verify manuscript was created with all sections
+        cursor = db.conn.execute(
+            """SELECT abstract, introduction, methods, results, discussion, latex_content
+               FROM manuscripts WHERE synthesis_run_id=?""",
+            (synthesis_run_id,)
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row["abstract"] is not None and len(row["abstract"]) > 0
+        assert row["introduction"] is not None and len(row["introduction"]) > 0
+        assert row["methods"] is not None and len(row["methods"]) > 0
+        assert row["results"] is not None and len(row["results"]) > 0
+        assert row["discussion"] is not None and len(row["discussion"]) > 0
+        assert row["latex_content"] is not None and len(row["latex_content"]) > 0
+
+        # Verify LaTeX document structure
+        latex = row["latex_content"]
+        assert "\\documentclass" in latex
+        assert "\\begin{document}" in latex
+        assert "\\end{document}" in latex
+        assert "\\section{Results}" in latex or "\\section{Introduction}" in latex
+
+def test_generate_figure_block():
+    """Test figure block generation with latex-architect MCP."""
+    from section_generator import generate_figure_block
+
+    # Test figure block generation
+    fig_block = generate_figure_block(
+        filename="figs/results.png",
+        caption="Performance comparison across models",
+        label="fig:results",
+        wide=False
+    )
+
+    # Verify structure
+    assert "\\begin{figure}" in fig_block
+    assert "\\includegraphics" in fig_block
+    assert "figs/results.png" in fig_block
+    assert "\\caption{Performance comparison across models}" in fig_block
+    assert "\\label{fig:results}" in fig_block
+    assert "\\end{figure}" in fig_block
+    assert "[t!]" in fig_block  # Top placement
+
+    # Test wide figure
+    wide_block = generate_figure_block(
+        filename="figs/wide.png",
+        caption="Wide figure",
+        label="fig:wide",
+        wide=True
+    )
+    assert "\\begin{figure*}" in wide_block
+    assert "\\end{figure*}" in wide_block
+
+def test_check_figure_placement():
+    """Test figure placement validation."""
+    from section_generator import check_figure_placement
+
+    # Good LaTeX with [t!] placement
+    good_latex = r"""
+    \begin{figure}[t!]
+    \includegraphics{fig.png}
+    \caption{Test}
+    \end{figure}
+    """
+
+    warnings = check_figure_placement(good_latex)
+    assert len(warnings) == 0
+
+    # Bad LaTeX with [h] placement
+    bad_latex = r"""
+    \begin{figure}[h]
+    \includegraphics{fig.png}
+    \caption{Test}
+    \end{figure}
+    """
+
+    warnings = check_figure_placement(bad_latex)
+    assert len(warnings) > 0
+    assert any("[h]" in w for w in warnings)
+
+def test_assemble_manuscript_integration():
+    """Test full manuscript assembly."""
+    from section_generator import assemble_manuscript
+    from pathlib import Path
+    from database import Database
+    import json
+
+    DB_PATH = Path(__file__).parent / "papers.db"
+
+    # Create synthesis run and manuscript
+    with Database(str(DB_PATH)) as db:
+        cursor = db.conn.execute(
+            """INSERT INTO synthesis_runs
+               (repo_path, mode, detected_domains, status)
+               VALUES (?, ?, ?, 'complete')""",
+            ("/test/repo", "primary_research", json.dumps(["spatial-transcriptomics"]))
+        )
+        db.conn.commit()
+        synthesis_run_id = cursor.lastrowid
+
+        # Create manuscript with sections
+        db.conn.execute(
+            """INSERT INTO manuscripts
+               (synthesis_run_id, mode, abstract, introduction, methods, results, discussion)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                synthesis_run_id,
+                "research",
+                "This is the abstract.",
+                "\\section{Introduction}\nThis is the introduction.",
+                "\\section{Methods}\nThese are the methods.",
+                "\\section{Results}\nThese are the results.",
+                "\\section{Discussion}\nThis is the discussion."
+            )
+        )
+        db.conn.commit()
+
+    # Assemble manuscript
+    latex_doc = assemble_manuscript(
+        synthesis_run_id=synthesis_run_id,
+        db_path=str(DB_PATH),
+        title="Test Manuscript",
+        authors="Test Author"
+    )
+
+    # Verify structure
+    assert "\\documentclass" in latex_doc
+    assert "Test Manuscript" in latex_doc
+    assert "Test Author" in latex_doc
+    assert "This is the abstract" in latex_doc
+    assert "This is the introduction" in latex_doc
+    assert "These are the methods" in latex_doc
+    assert "These are the results" in latex_doc
+    assert "This is the discussion" in latex_doc
+    assert "\\begin{document}" in latex_doc
+    assert "\\end{document}" in latex_doc

@@ -1,0 +1,59 @@
+% NeurIPS-style Format for Machine Learning
+% Uses standard article class with NeurIPS-like formatting
+\documentclass[10pt]{article}
+
+% Page setup (NeurIPS-like margins)
+\usepackage[margin=1in]{geometry}
+
+% Required packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{times}
+
+% Title and authors
+\title{{{TITLE}}}
+
+\author{%
+  {{AUTHORS}}
+}
+
+\begin{document}
+
+\maketitle
+
+% Abstract
+\begin{abstract}
+{{ABSTRACT}}
+\end{abstract}
+
+% Introduction
+\section{Introduction}
+{{INTRODUCTION}}
+
+% Methods
+\section{Methods}
+{{METHODS}}
+
+% Results
+\section{Results}
+{{RESULTS}}
+
+% Discussion
+\section{Discussion}
+{{DISCUSSION}}
+
+% Bibliography
+\bibliographystyle{plain}
+\bibliography{references}
+
+% Optional: Manual bibliography section if no BibTeX
+% \section*{References}
+% {{BIBLIOGRAPHY}}
+
+\end{document}

@@ -67,6 +67,7 @@ def migrate_all_professors(db_path: str):
     professors = [
         ("Yuankai Huo", "Vanderbilt University", "/home/user/yuankai_huo_papers/metadata/all_papers.json"),
         ("Ken Lau", "Vanderbilt University", "/home/user/ken_lau_papers/metadata/all_papers.json"),
+        ("Bennett Landman", "Vanderbilt University", "/mnt/c/Users/User/Desktop/bennett_landman_papers/metadata.json"),
         ("Tae Hyun Hwang", "Vanderbilt University", "/home/user/vanderbilt_professors_mcp/data/hwang/metadata/all_papers.json"),
         ("Fedaa Najdawi", "Vanderbilt University", "/home/user/vanderbilt_professors_mcp/data/najdawi/metadata/all_papers.json"),
         ("Hirak Sarkar", "Vanderbilt University", "/home/user/vanderbilt_professors_mcp/data/sarkar/metadata/all_papers.json"),

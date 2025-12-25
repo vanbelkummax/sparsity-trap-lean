@@ -1,0 +1,55 @@
+% Nature-style Format for Genomics
+\documentclass[10pt]{article}
+
+% Required packages
+\usepackage[margin=1in]{geometry}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{natbib}
+\usepackage{lineno}
+
+% Line numbers for review
+\linenumbers
+
+% Title and authors
+\title{{{TITLE}}}
+\author{{{AUTHORS}}}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+% Abstract
+\begin{abstract}
+{{ABSTRACT}}
+\end{abstract}
+
+% Introduction (no section header for Nature style)
+{{INTRODUCTION}}
+
+% Methods
+\section*{Methods}
+{{METHODS}}
+
+% Results
+\section*{Results}
+{{RESULTS}}
+
+% Discussion
+\section*{Discussion}
+{{DISCUSSION}}
+
+% Bibliography (Nature numbered style, at end)
+\bibliographystyle{naturemag}
+\bibliography{references}
+
+% Optional: Manual bibliography section if no BibTeX
+% \section*{References}
+% {{BIBLIOGRAPHY}}
+
+\end{document}

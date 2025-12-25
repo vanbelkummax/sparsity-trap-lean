@@ -14,6 +14,7 @@ from results_ingester import ingest_results_data
 from literature_discovery import discover_targeted_literature, discover_broad_literature
 from paper_extractor import extract_multiple_papers
 from domain_synthesizer import synthesize_multiple_domains
+from section_generator import generate_section, detect_field_from_domains, assemble_manuscript
 
 # Database path
 DB_PATH = Path(__file__).parent / "papers.db"
@@ -291,6 +292,193 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 "synthesis_summary": synthesis_result,
                 "next_step": "Call generate_section to write individual manuscript sections or generate_manuscript for full orchestration"
             }
+
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "generate_section":
+            synthesis_run_id = arguments.get("synthesis_run_id")
+            section = arguments.get("section")
+            mode = arguments.get("mode")
+
+            # Get detected domains to determine field
+            with Database(str(DB_PATH)) as db:
+                cursor = db.conn.execute(
+                    "SELECT detected_domains FROM synthesis_runs WHERE id=?",
+                    (synthesis_run_id,)
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return [TextContent(type="text", text=f"Synthesis run {synthesis_run_id} not found")]
+                detected_domains = json.loads(row["detected_domains"])
+
+            # Detect field
+            field = detect_field_from_domains(detected_domains)
+
+            # Generate section
+            section_text = generate_section(
+                synthesis_run_id=synthesis_run_id,
+                section=section,
+                manuscript_mode=mode,
+                db_path=str(DB_PATH)
+            )
+
+            # Store section in manuscripts table
+            # Map mode to manuscript mode (manuscripts table uses different enum)
+            manuscript_mode_map = {
+                "primary_research": "research",
+                "review": "review"
+            }
+            manuscript_mode = manuscript_mode_map.get(mode, "research")
+
+            with Database(str(DB_PATH)) as db:
+                # Check if manuscript record exists
+                cursor = db.conn.execute(
+                    "SELECT id FROM manuscripts WHERE synthesis_run_id=?",
+                    (synthesis_run_id,)
+                )
+                row = cursor.fetchone()
+
+                if row:
+                    # Update existing manuscript
+                    manuscript_id = row["id"]
+                    db.conn.execute(
+                        f"UPDATE manuscripts SET {section}=? WHERE id=?",
+                        (section_text, manuscript_id)
+                    )
+                else:
+                    # Create new manuscript record
+                    db.conn.execute(
+                        f"""INSERT INTO manuscripts
+                           (synthesis_run_id, mode, {section})
+                           VALUES (?, ?, ?)""",
+                        (synthesis_run_id, manuscript_mode, section_text)
+                    )
+                db.conn.commit()
+
+            # Prepare response
+            result = {
+                "synthesis_run_id": synthesis_run_id,
+                "section": section,
+                "mode": mode,
+                "field": field,
+                "preview": section_text[:200] if len(section_text) > 200 else section_text,
+                "next_step": "Call generate_section for other sections or generate_manuscript for full orchestration"
+            }
+
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "generate_manuscript":
+            synthesis_run_id = arguments.get("synthesis_run_id")
+            mode = arguments.get("mode")
+            output_path = arguments.get("output_path")
+
+            # Get synthesis run data
+            with Database(str(DB_PATH)) as db:
+                cursor = db.conn.execute(
+                    "SELECT detected_domains, mode as detected_mode FROM synthesis_runs WHERE id=?",
+                    (synthesis_run_id,)
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return [TextContent(type="text", text=f"Synthesis run {synthesis_run_id} not found")]
+
+                detected_domains = json.loads(row["detected_domains"])
+                detected_mode = row["detected_mode"]
+
+            # Detect field for template selection
+            field = detect_field_from_domains(detected_domains)
+
+            # Map mode to manuscript_mode for database
+            mode_map = {
+                "research": "research",
+                "review": "review",
+                "extended-review": "review",
+                "hypothesis": "research"
+            }
+            manuscript_mode = mode_map.get(mode, "research")
+
+            # Determine section generation mode
+            section_mode = "primary_research" if mode in ["research", "hypothesis"] else "review"
+
+            # Check if manuscript already exists
+            with Database(str(DB_PATH)) as db:
+                cursor = db.conn.execute(
+                    "SELECT id FROM manuscripts WHERE synthesis_run_id=?",
+                    (synthesis_run_id,)
+                )
+                existing = cursor.fetchone()
+                if existing:
+                    manuscript_id = existing["id"]
+                else:
+                    # Create new manuscript record
+                    cursor = db.conn.execute(
+                        "INSERT INTO manuscripts (synthesis_run_id, mode) VALUES (?, ?)",
+                        (synthesis_run_id, manuscript_mode)
+                    )
+                    db.conn.commit()
+                    manuscript_id = cursor.lastrowid
+
+            # Generate sections in sequence
+            sections = ["abstract", "introduction", "methods", "results", "discussion"]
+
+            for i, section in enumerate(sections, 1):
+                # Generate section
+                section_text = generate_section(
+                    synthesis_run_id=synthesis_run_id,
+                    section=section,
+                    manuscript_mode=section_mode,
+                    db_path=str(DB_PATH)
+                )
+
+                # Update manuscript with this section
+                with Database(str(DB_PATH)) as db:
+                    db.conn.execute(
+                        f"UPDATE manuscripts SET {section}=? WHERE id=?",
+                        (section_text, manuscript_id)
+                    )
+                    db.conn.commit()
+
+            # Assemble full LaTeX document
+            latex_document = assemble_manuscript(
+                synthesis_run_id=synthesis_run_id,
+                db_path=str(DB_PATH),
+                title="Generated Manuscript",
+                authors="PolyMaX Synthesizer"
+            )
+
+            # Store latex_content in database
+            with Database(str(DB_PATH)) as db:
+                db.conn.execute(
+                    "UPDATE manuscripts SET latex_content=? WHERE id=?",
+                    (latex_document, manuscript_id)
+                )
+                db.conn.commit()
+
+            # Update synthesis_run status to complete
+            with Database(str(DB_PATH)) as db:
+                db.conn.execute(
+                    "UPDATE synthesis_runs SET status='complete' WHERE id=?",
+                    (synthesis_run_id,)
+                )
+                db.conn.commit()
+
+            # Optionally save to file
+            if output_path:
+                Path(output_path).write_text(latex_document)
+
+            # Prepare response
+            result = {
+                "status": "complete",
+                "manuscript_id": manuscript_id,
+                "synthesis_run_id": synthesis_run_id,
+                "field": field,
+                "mode": mode,
+                "latex_preview": latex_document[:500] if len(latex_document) > 500 else latex_document,
+                "next_step": "Use pdflatex to compile LaTeX or inspect individual sections"
+            }
+
+            if output_path:
+                result["output_file"] = output_path
 
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
