@@ -296,7 +296,11 @@ def _store_extraction(paper_id: int, extraction: Dict[str, Any], db_path: str) -
         db.conn.commit()
 
 
-def extract_multiple_papers(paper_ids: List[int], db_path: str) -> Dict[str, Any]:
+def extract_multiple_papers(
+    paper_ids: List[int],
+    db_path: str,
+    extraction_depth: str = "full"
+) -> Dict[str, Any]:
     """
     Extract multiple papers in batch.
 
@@ -308,6 +312,10 @@ def extract_multiple_papers(paper_ids: List[int], db_path: str) -> Dict[str, Any
     Args:
         paper_ids: List of paper IDs to extract
         db_path: Path to SQLite database
+        extraction_depth: Extraction depth level
+            - "high_only": Only extract high_level (main_claim, novelty, contribution)
+            - "mid": Extract high_level + mid_level (stats, methods)
+            - "full": Extract all levels (high, mid, low, code_methods)
 
     Returns:
         Summary of extractions with success/failure counts
@@ -321,7 +329,30 @@ def extract_multiple_papers(paper_ids: List[int], db_path: str) -> Dict[str, Any
 
     for paper_id in paper_ids:
         try:
-            extract_single_paper(paper_id, db_path)
+            # Extract full paper content
+            result = extract_single_paper(paper_id, db_path)
+
+            # Filter based on extraction_depth
+            if extraction_depth == "high_only":
+                result = {
+                    "high_level": result["high_level"],
+                    "mid_level": {},
+                    "low_level": {},
+                    "code_methods": {}
+                }
+            elif extraction_depth == "mid":
+                result = {
+                    "high_level": result["high_level"],
+                    "mid_level": result["mid_level"],
+                    "low_level": {},
+                    "code_methods": {}
+                }
+            # "full" uses complete result (no filtering needed)
+
+            # Re-store the filtered extraction
+            if extraction_depth != "full":
+                _store_extraction(paper_id, result, db_path)
+
             results["successful"] += 1
         except Exception as e:
             results["failed"] += 1

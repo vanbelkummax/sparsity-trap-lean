@@ -234,7 +234,11 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
 
             # Extract papers using rule-based MVP extractor
             # TODO: Future enhancement - use Claude API with prompts/extraction_prompts.py
-            extraction_result = extract_multiple_papers(paper_ids, str(DB_PATH))
+            extraction_result = extract_multiple_papers(
+                paper_ids,
+                str(DB_PATH),
+                extraction_depth=extraction_depth
+            )
 
             # Update synthesis_run status and count
             with Database(str(DB_PATH)) as db:

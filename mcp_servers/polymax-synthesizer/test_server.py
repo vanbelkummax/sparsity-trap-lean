@@ -251,3 +251,133 @@ def test_extract_papers_all_papers():
     # Should have extracted multiple papers
     assert result_data["papers_extracted"] > 0
     assert "extraction_summary" in result_data
+
+def test_extraction_depth_high_only():
+    """Test extraction_depth='high_only' filters to high_level only."""
+    from paper_extractor import extract_multiple_papers
+    from pathlib import Path
+    from database import Database
+    import json
+
+    DB_PATH = Path(__file__).parent / "papers.db"
+
+    # Get first paper
+    with Database(str(DB_PATH)) as db:
+        cursor = db.conn.execute("SELECT id FROM papers LIMIT 1")
+        paper_id = cursor.fetchone()["id"]
+
+    # Extract with high_only depth
+    result = extract_multiple_papers([paper_id], str(DB_PATH), extraction_depth="high_only")
+
+    # Verify success
+    assert result["successful"] == 1
+    assert result["failed"] == 0
+
+    # Verify database only contains high_level data
+    with Database(str(DB_PATH)) as db:
+        cursor = db.conn.execute(
+            "SELECT high_level, mid_level, low_level, code_methods FROM paper_extractions WHERE paper_id=?",
+            (paper_id,)
+        )
+        row = cursor.fetchone()
+
+    high_level = json.loads(row[0])
+    mid_level = json.loads(row[1])
+    low_level = json.loads(row[2])
+    code_methods = json.loads(row[3])
+
+    # high_level should have content
+    assert "main_claim" in high_level
+    assert len(high_level["main_claim"]) > 0
+
+    # mid_level, low_level, code_methods should be empty
+    assert mid_level == {}
+    assert low_level == {}
+    assert code_methods == {}
+
+def test_extraction_depth_mid():
+    """Test extraction_depth='mid' includes high_level and mid_level."""
+    from paper_extractor import extract_multiple_papers
+    from pathlib import Path
+    from database import Database
+    import json
+
+    DB_PATH = Path(__file__).parent / "papers.db"
+
+    # Get second paper
+    with Database(str(DB_PATH)) as db:
+        cursor = db.conn.execute("SELECT id FROM papers LIMIT 1 OFFSET 1")
+        paper_id = cursor.fetchone()["id"]
+
+    # Extract with mid depth
+    result = extract_multiple_papers([paper_id], str(DB_PATH), extraction_depth="mid")
+
+    # Verify success
+    assert result["successful"] == 1
+    assert result["failed"] == 0
+
+    # Verify database contains high_level and mid_level
+    with Database(str(DB_PATH)) as db:
+        cursor = db.conn.execute(
+            "SELECT high_level, mid_level, low_level, code_methods FROM paper_extractions WHERE paper_id=?",
+            (paper_id,)
+        )
+        row = cursor.fetchone()
+
+    high_level = json.loads(row[0])
+    mid_level = json.loads(row[1])
+    low_level = json.loads(row[2])
+    code_methods = json.loads(row[3])
+
+    # high_level and mid_level should have content
+    assert "main_claim" in high_level
+    assert len(high_level["main_claim"]) > 0
+    assert "stats" in mid_level
+    assert "methods" in mid_level
+
+    # low_level and code_methods should be empty
+    assert low_level == {}
+    assert code_methods == {}
+
+def test_extraction_depth_full():
+    """Test extraction_depth='full' includes all levels."""
+    from paper_extractor import extract_multiple_papers
+    from pathlib import Path
+    from database import Database
+    import json
+
+    DB_PATH = Path(__file__).parent / "papers.db"
+
+    # Get third paper
+    with Database(str(DB_PATH)) as db:
+        cursor = db.conn.execute("SELECT id FROM papers LIMIT 1 OFFSET 2")
+        paper_id = cursor.fetchone()["id"]
+
+    # Extract with full depth (default)
+    result = extract_multiple_papers([paper_id], str(DB_PATH), extraction_depth="full")
+
+    # Verify success
+    assert result["successful"] == 1
+    assert result["failed"] == 0
+
+    # Verify database contains all levels
+    with Database(str(DB_PATH)) as db:
+        cursor = db.conn.execute(
+            "SELECT high_level, mid_level, low_level, code_methods FROM paper_extractions WHERE paper_id=?",
+            (paper_id,)
+        )
+        row = cursor.fetchone()
+
+    high_level = json.loads(row[0])
+    mid_level = json.loads(row[1])
+    low_level = json.loads(row[2])
+    code_methods = json.loads(row[3])
+
+    # All levels should have expected structure
+    assert "main_claim" in high_level
+    assert len(high_level["main_claim"]) > 0
+    assert "stats" in mid_level
+    assert "methods" in mid_level
+    assert "quotes" in low_level
+    assert "algorithms" in code_methods
+    assert "equations" in code_methods
