@@ -8,6 +8,12 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
+from database import Database
+from repo_analyzer import analyze_repository
+
+# Database path
+DB_PATH = Path(__file__).parent / "papers.db"
+
 # Initialize server
 server = Server("polymax-synthesizer")
 
@@ -117,8 +123,37 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 text=f"Invalid arguments: expected dict, got {type(arguments).__name__}"
             )]
 
-        # Tool implementations will go here in future tasks
-        # For now, return stub response
+        if name == "analyze_repo":
+            repo_path = arguments.get("repo_path")
+            mode = arguments.get("mode", "auto")
+
+            # Analyze repository
+            analysis = analyze_repository(repo_path)
+
+            # Create synthesis run
+            with Database(str(DB_PATH)) as db:
+                cursor = db.conn.execute(
+                    """INSERT INTO synthesis_runs
+                       (repo_path, mode, detected_domains, status)
+                       VALUES (?, ?, ?, 'analyzing')""",
+                    (
+                        repo_path,
+                        analysis["detected_mode"],
+                        json.dumps(analysis["detected_domains"])
+                    )
+                )
+                db.conn.commit()
+                synthesis_run_id = cursor.lastrowid
+
+            result = {
+                "synthesis_run_id": synthesis_run_id,
+                **analysis,
+                "next_step": "Call ingest_results to load experimental data" if analysis["detected_mode"] == "primary_research" else "Call discover_literature"
+            }
+
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        # Other tools return stub
         return [TextContent(
             type="text",
             text=f"Tool '{name}' not yet implemented"
