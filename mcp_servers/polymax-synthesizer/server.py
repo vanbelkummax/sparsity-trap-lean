@@ -13,6 +13,7 @@ from repo_analyzer import analyze_repository
 from results_ingester import ingest_results_data
 from literature_discovery import discover_targeted_literature, discover_broad_literature
 from paper_extractor import extract_multiple_papers
+from domain_synthesizer import synthesize_multiple_domains
 
 # Database path
 DB_PATH = Path(__file__).parent / "papers.db"
@@ -257,6 +258,38 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 "extraction_summary": extraction_result,
                 "extraction_depth": extraction_depth,
                 "next_step": "Call synthesize_domains to generate domain syntheses"
+            }
+
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "synthesize_domains":
+            synthesis_run_id = arguments.get("synthesis_run_id")
+            domain_ids = arguments.get("domain_ids", [])
+
+            # Synthesize domains using rule-based MVP synthesizer
+            # TODO: Future enhancement - use Claude Opus 4.5 API with prompts/synthesis_prompts.py
+            synthesis_result = synthesize_multiple_domains(
+                synthesis_run_id,
+                domain_ids,
+                str(DB_PATH)
+            )
+
+            # Update synthesis_run status and count
+            with Database(str(DB_PATH)) as db:
+                db.conn.execute(
+                    """UPDATE synthesis_runs
+                       SET domains_synthesized=?, status='writing'
+                       WHERE id=?""",
+                    (synthesis_result["successful"], synthesis_run_id)
+                )
+                db.conn.commit()
+
+            # Prepare response
+            result = {
+                "synthesis_run_id": synthesis_run_id,
+                "domains_synthesized": synthesis_result["successful"],
+                "synthesis_summary": synthesis_result,
+                "next_step": "Call generate_section to write individual manuscript sections or generate_manuscript for full orchestration"
             }
 
             return [TextContent(type="text", text=json.dumps(result, indent=2))]

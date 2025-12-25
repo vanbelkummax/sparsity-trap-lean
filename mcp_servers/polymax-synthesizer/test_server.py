@@ -381,3 +381,185 @@ def test_extraction_depth_full():
     assert "quotes" in low_level
     assert "algorithms" in code_methods
     assert "equations" in code_methods
+
+def test_synthesize_single_domain():
+    """Test synthesizing a single domain with mock paper extractions."""
+    from domain_synthesizer import synthesize_single_domain
+    from pathlib import Path
+    from database import Database
+    import json
+
+    DB_PATH = Path(__file__).parent / "papers.db"
+
+    # Create mock paper extractions
+    mock_extractions = [
+        {
+            "paper_id": 1,
+            "title": "Poisson regression for spike trains",
+            "year": 2008,
+            "pmid": "18563015",
+            "high_level": {
+                "main_claim": "GLM with Poisson loss improves spike train modeling",
+                "novelty": "First application to neural data",
+                "contribution": "Demonstrates 15% improvement over baseline"
+            },
+            "mid_level": {
+                "stats": [
+                    {
+                        "type": "performance",
+                        "metric": "RMSE improvement",
+                        "value": "15%",
+                        "context": "15% RMSE improvement over baseline",
+                        "page": "7"
+                    }
+                ],
+                "methods": [
+                    {
+                        "name": "Poisson GLM",
+                        "parameters": {"learning_rate": 0.01},
+                        "page": "Methods"
+                    }
+                ]
+            },
+            "low_level": {
+                "quotes": [
+                    {
+                        "text": "Poisson assumption works well for sparse data",
+                        "page": "7",
+                        "section": "Results"
+                    }
+                ]
+            }
+        },
+        {
+            "paper_id": 2,
+            "title": "Negative binomial for overdispersed spike data",
+            "year": 2015,
+            "pmid": "25678901",
+            "high_level": {
+                "main_claim": "NB2 addresses overdispersion in spike trains",
+                "novelty": "Variance modeling for neural data",
+                "contribution": "30% improvement over Poisson"
+            },
+            "mid_level": {
+                "stats": [
+                    {
+                        "type": "performance",
+                        "metric": "RMSE improvement",
+                        "value": "30%",
+                        "context": "30% RMSE improvement over Poisson GLM",
+                        "page": "12"
+                    }
+                ],
+                "methods": [
+                    {
+                        "name": "Negative Binomial",
+                        "parameters": {"theta": 0.5},
+                        "page": "Methods"
+                    }
+                ]
+            },
+            "low_level": {
+                "quotes": [
+                    {
+                        "text": "Overdispersion is common in neural spike data",
+                        "page": "12",
+                        "section": "Discussion"
+                    }
+                ]
+            }
+        }
+    ]
+
+    # Call synthesize_single_domain
+    result = synthesize_single_domain("neuroscience", mock_extractions, str(DB_PATH))
+
+    # Verify markdown structure
+    assert "# neuroscience" in result.lower()
+    assert "## Key Findings" in result or "## Key Finding" in result
+    assert "## Statistical Approaches" in result
+    assert "## Cross-Field Transfer" in result
+    assert "## Top Papers" in result
+
+    # Verify contains specific stats from mock data
+    assert "15%" in result or "30%" in result
+    assert "PMID" in result or "pmid" in result.lower()
+
+def test_synthesize_domains_tool():
+    """Test synthesize_domains MCP tool."""
+    from server import call_tool
+    from pathlib import Path
+    from database import Database
+    import json
+    import asyncio
+
+    DB_PATH = Path(__file__).parent / "papers.db"
+
+    # Create synthesis run with extracted papers
+    with Database(str(DB_PATH)) as db:
+        # Create domain
+        cursor = db.conn.execute(
+            "INSERT OR IGNORE INTO domains (name, description) VALUES (?, ?)",
+            ("spatial-transcriptomics", "Spatial gene expression analysis")
+        )
+        db.conn.commit()
+
+        cursor = db.conn.execute("SELECT id FROM domains WHERE name=?", ("spatial-transcriptomics",))
+        domain_id = cursor.fetchone()["id"]
+
+        # Create synthesis run
+        cursor = db.conn.execute(
+            """INSERT INTO synthesis_runs
+               (repo_path, mode, detected_domains, status, papers_extracted)
+               VALUES (?, ?, ?, 'synthesizing', 3)""",
+            ("/test/repo", "review", json.dumps(["spatial-transcriptomics"]))
+        )
+        db.conn.commit()
+        synthesis_run_id = cursor.lastrowid
+
+    # Call synthesize_domains tool
+    result = asyncio.run(call_tool(
+        "synthesize_domains",
+        {
+            "synthesis_run_id": synthesis_run_id,
+            "domain_ids": [domain_id]
+        }
+    ))
+
+    # Parse result
+    assert len(result) == 1
+    result_text = result[0].text
+    result_data = json.loads(result_text)
+
+    # Verify response structure
+    assert "synthesis_run_id" in result_data
+    assert result_data["synthesis_run_id"] == synthesis_run_id
+    assert "domains_synthesized" in result_data
+    assert result_data["domains_synthesized"] == 1
+    assert "synthesis_summary" in result_data
+
+    # Verify database was updated
+    with Database(str(DB_PATH)) as db:
+        # Check synthesis_run status changed to 'writing'
+        cursor = db.conn.execute(
+            "SELECT status, domains_synthesized FROM synthesis_runs WHERE id=?",
+            (synthesis_run_id,)
+        )
+        row = cursor.fetchone()
+        assert row["status"] == "writing"
+        assert row["domains_synthesized"] == 1
+
+        # Verify domain_syntheses was created
+        cursor = db.conn.execute(
+            "SELECT summary_markdown FROM domain_syntheses WHERE synthesis_run_id=? AND domain_id=?",
+            (synthesis_run_id, domain_id)
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        summary = row["summary_markdown"]
+        assert len(summary) > 0
+        assert "##" in summary  # Should have markdown headers
+
+    # Verify next_step is provided
+    assert "next_step" in result_data
+    assert "generate_section" in result_data["next_step"] or "generate_manuscript" in result_data["next_step"]
