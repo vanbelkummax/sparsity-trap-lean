@@ -63,3 +63,22 @@ def test_ingest_results_from_csv(tmp_path):
     assert len(result["key_findings"]) > 0
     assert any("SSIM" in f["claim"] for f in result["key_findings"])
     assert len(result["constraints"]) > 0
+
+def test_discover_literature_targeted():
+    """Test targeted literature discovery."""
+    from literature_discovery import discover_targeted_literature
+    from pathlib import Path
+
+    DB_PATH = Path(__file__).parent / "papers.db"
+
+    queries = [
+        "Yuankai Huo Img2ST",
+        "Poisson loss sparse data"
+    ]
+
+    # This uses existing database, so just verify structure
+    result = discover_targeted_literature(queries, str(DB_PATH))
+
+    assert "professors_added" in result
+    assert "papers_added" in result
+    assert "targeted_matches" in result

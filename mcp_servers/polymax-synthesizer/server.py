@@ -11,6 +11,7 @@ from mcp.types import Tool, TextContent
 from database import Database
 from repo_analyzer import analyze_repository
 from results_ingester import ingest_results_data
+from literature_discovery import discover_targeted_literature, discover_broad_literature
 
 # Database path
 DB_PATH = Path(__file__).parent / "papers.db"
@@ -184,6 +185,38 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 **ingested,
                 "next_step": "Call discover_literature with targeted mode"
             }
+
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "discover_literature":
+            synthesis_run_id = arguments.get("synthesis_run_id")
+            mode = arguments.get("mode")
+            search_queries = arguments.get("search_queries", [])
+
+            if mode == "targeted":
+                result = discover_targeted_literature(search_queries, str(DB_PATH))
+            else:
+                # Get domains from synthesis_run
+                with Database(str(DB_PATH)) as db:
+                    cursor = db.conn.execute(
+                        "SELECT detected_domains FROM synthesis_runs WHERE id=?",
+                        (synthesis_run_id,)
+                    )
+                    row = cursor.fetchone()
+                    domains = json.loads(row["detected_domains"]) if row else []
+
+                result = discover_broad_literature(domains, str(DB_PATH))
+
+            # Update synthesis_run
+            with Database(str(DB_PATH)) as db:
+                db.conn.execute(
+                    "UPDATE synthesis_runs SET papers_found=?, status='extracting' WHERE id=?",
+                    (result["papers_added"], synthesis_run_id)
+                )
+                db.conn.commit()
+
+            result["synthesis_run_id"] = synthesis_run_id
+            result["next_step"] = "Call extract_papers to perform hierarchical extraction"
 
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
