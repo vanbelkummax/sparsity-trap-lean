@@ -82,3 +82,53 @@ def test_discover_literature_targeted():
     assert "professors_added" in result
     assert "papers_added" in result
     assert "targeted_matches" in result
+
+def test_extract_single_paper():
+    """Test extracting a single paper with MVP rule-based extractor."""
+    from paper_extractor import extract_single_paper
+    from pathlib import Path
+    import json
+
+    DB_PATH = Path(__file__).parent / "papers.db"
+
+    # Use paper ID 1 (GLAM paper with abstract)
+    result = extract_single_paper(1, str(DB_PATH))
+
+    # Verify structure matches expected format
+    assert "high_level" in result
+    assert "mid_level" in result
+    assert "low_level" in result
+    assert "code_methods" in result
+
+    # Verify high_level contains expected fields
+    assert "main_claim" in result["high_level"]
+    assert "novelty" in result["high_level"]
+    assert "contribution" in result["high_level"]
+
+    # Verify mid_level contains arrays
+    assert "stats" in result["mid_level"]
+    assert isinstance(result["mid_level"]["stats"], list)
+    assert "methods" in result["mid_level"]
+    assert isinstance(result["mid_level"]["methods"], list)
+
+    # Verify low_level contains quotes array
+    assert "quotes" in result["low_level"]
+    assert isinstance(result["low_level"]["quotes"], list)
+
+    # Verify code_methods contains arrays
+    assert "algorithms" in result["code_methods"]
+    assert "equations" in result["code_methods"]
+
+    # Verify extraction was stored in database
+    import sqlite3
+    conn = sqlite3.connect(str(DB_PATH))
+    cursor = conn.execute(
+        "SELECT high_level, mid_level, low_level, code_methods FROM paper_extractions WHERE paper_id=?",
+        (1,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    assert row is not None
+    stored_high = json.loads(row[0])
+    assert stored_high["main_claim"] == result["high_level"]["main_claim"]
