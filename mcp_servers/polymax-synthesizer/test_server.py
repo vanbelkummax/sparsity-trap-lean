@@ -132,3 +132,122 @@ def test_extract_single_paper():
     assert row is not None
     stored_high = json.loads(row[0])
     assert stored_high["main_claim"] == result["high_level"]["main_claim"]
+
+def test_extract_papers_tool():
+    """Test extract_papers MCP tool with batch extraction."""
+    from server import call_tool
+    from pathlib import Path
+    from database import Database
+    import json
+    import asyncio
+
+    DB_PATH = Path(__file__).parent / "papers.db"
+
+    # Create a synthesis run for testing
+    with Database(str(DB_PATH)) as db:
+        cursor = db.conn.execute(
+            """INSERT INTO synthesis_runs
+               (repo_path, mode, detected_domains, status)
+               VALUES (?, ?, ?, 'extracting')""",
+            ("/test/repo", "review", json.dumps(["spatial-transcriptomics"]))
+        )
+        db.conn.commit()
+        synthesis_run_id = cursor.lastrowid
+
+    # Get first 3 papers from database to extract
+    with Database(str(DB_PATH)) as db:
+        cursor = db.conn.execute("SELECT id FROM papers LIMIT 3")
+        paper_ids = [row["id"] for row in cursor.fetchall()]
+
+    # Call extract_papers tool
+    result = asyncio.run(call_tool(
+        "extract_papers",
+        {
+            "synthesis_run_id": synthesis_run_id,
+            "paper_ids": paper_ids,
+            "extraction_depth": "full"
+        }
+    ))
+
+    # Parse result
+    assert len(result) == 1
+    result_text = result[0].text
+    result_data = json.loads(result_text)
+
+    # Verify response structure
+    assert "synthesis_run_id" in result_data
+    assert result_data["synthesis_run_id"] == synthesis_run_id
+    assert "papers_extracted" in result_data
+    assert result_data["papers_extracted"] == len(paper_ids)
+    assert "extraction_summary" in result_data
+
+    # Verify extraction_summary structure
+    summary = result_data["extraction_summary"]
+    assert "total" in summary
+    assert "successful" in summary
+    assert "failed" in summary
+    assert summary["total"] == len(paper_ids)
+    assert summary["successful"] == len(paper_ids)
+    assert summary["failed"] == 0
+
+    # Verify database was updated
+    with Database(str(DB_PATH)) as db:
+        # Check synthesis_run status changed to 'synthesizing'
+        cursor = db.conn.execute(
+            "SELECT status, papers_extracted FROM synthesis_runs WHERE id=?",
+            (synthesis_run_id,)
+        )
+        row = cursor.fetchone()
+        assert row["status"] == "synthesizing"
+        assert row["papers_extracted"] == len(paper_ids)
+
+        # Verify extractions were stored
+        cursor = db.conn.execute(
+            "SELECT COUNT(*) as count FROM paper_extractions WHERE paper_id IN ({})".format(
+                ",".join("?" * len(paper_ids))
+            ),
+            paper_ids
+        )
+        count = cursor.fetchone()["count"]
+        assert count == len(paper_ids)
+
+    # Verify next_step is provided
+    assert "next_step" in result_data
+    assert "synthesize_domains" in result_data["next_step"]
+
+def test_extract_papers_all_papers():
+    """Test extract_papers without paper_ids extracts all papers for domains."""
+    from server import call_tool
+    from pathlib import Path
+    from database import Database
+    import json
+    import asyncio
+
+    DB_PATH = Path(__file__).parent / "papers.db"
+
+    # Create a synthesis run
+    with Database(str(DB_PATH)) as db:
+        cursor = db.conn.execute(
+            """INSERT INTO synthesis_runs
+               (repo_path, mode, detected_domains, status)
+               VALUES (?, ?, ?, 'extracting')""",
+            ("/test/repo2", "review", json.dumps(["spatial-transcriptomics"]))
+        )
+        db.conn.commit()
+        synthesis_run_id = cursor.lastrowid
+
+    # Call extract_papers without paper_ids (should extract all)
+    result = asyncio.run(call_tool(
+        "extract_papers",
+        {
+            "synthesis_run_id": synthesis_run_id,
+            "extraction_depth": "full"
+        }
+    ))
+
+    # Parse result
+    result_data = json.loads(result[0].text)
+
+    # Should have extracted multiple papers
+    assert result_data["papers_extracted"] > 0
+    assert "extraction_summary" in result_data

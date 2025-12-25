@@ -12,6 +12,7 @@ from database import Database
 from repo_analyzer import analyze_repository
 from results_ingester import ingest_results_data
 from literature_discovery import discover_targeted_literature, discover_broad_literature
+from paper_extractor import extract_multiple_papers
 
 # Database path
 DB_PATH = Path(__file__).parent / "papers.db"
@@ -217,6 +218,42 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
 
             result["synthesis_run_id"] = synthesis_run_id
             result["next_step"] = "Call extract_papers to perform hierarchical extraction"
+
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "extract_papers":
+            synthesis_run_id = arguments.get("synthesis_run_id")
+            paper_ids = arguments.get("paper_ids")
+            extraction_depth = arguments.get("extraction_depth", "full")
+
+            # If no paper_ids provided, get all papers from database
+            if not paper_ids:
+                with Database(str(DB_PATH)) as db:
+                    cursor = db.conn.execute("SELECT id FROM papers")
+                    paper_ids = [row["id"] for row in cursor.fetchall()]
+
+            # Extract papers using rule-based MVP extractor
+            # TODO: Future enhancement - use Claude API with prompts/extraction_prompts.py
+            extraction_result = extract_multiple_papers(paper_ids, str(DB_PATH))
+
+            # Update synthesis_run status and count
+            with Database(str(DB_PATH)) as db:
+                db.conn.execute(
+                    """UPDATE synthesis_runs
+                       SET papers_extracted=?, status='synthesizing'
+                       WHERE id=?""",
+                    (extraction_result["successful"], synthesis_run_id)
+                )
+                db.conn.commit()
+
+            # Prepare response
+            result = {
+                "synthesis_run_id": synthesis_run_id,
+                "papers_extracted": extraction_result["successful"],
+                "extraction_summary": extraction_result,
+                "extraction_depth": extraction_depth,
+                "next_step": "Call synthesize_domains to generate domain syntheses"
+            }
 
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
