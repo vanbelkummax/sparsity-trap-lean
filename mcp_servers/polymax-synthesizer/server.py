@@ -10,6 +10,7 @@ from mcp.types import Tool, TextContent
 
 from database import Database
 from repo_analyzer import analyze_repository
+from results_ingester import ingest_results_data
 
 # Database path
 DB_PATH = Path(__file__).parent / "papers.db"
@@ -149,6 +150,39 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 "synthesis_run_id": synthesis_run_id,
                 **analysis,
                 "next_step": "Call ingest_results to load experimental data" if analysis["detected_mode"] == "primary_research" else "Call discover_literature"
+            }
+
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "ingest_results":
+            synthesis_run_id = arguments.get("synthesis_run_id")
+
+            # Get repo path from synthesis_run
+            with Database(str(DB_PATH)) as db:
+                cursor = db.conn.execute(
+                    "SELECT repo_path FROM synthesis_runs WHERE id=?",
+                    (synthesis_run_id,)
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return [TextContent(type="text", text=f"Synthesis run {synthesis_run_id} not found")]
+                repo_path = row["repo_path"]
+
+            # Ingest results
+            ingested = ingest_results_data(repo_path)
+
+            # Store in database
+            with Database(str(DB_PATH)) as db:
+                db.conn.execute(
+                    "UPDATE synthesis_runs SET main_finding=?, status='discovering' WHERE id=?",
+                    (json.dumps(ingested), synthesis_run_id)
+                )
+                db.conn.commit()
+
+            result = {
+                "synthesis_run_id": synthesis_run_id,
+                **ingested,
+                "next_step": "Call discover_literature with targeted mode"
             }
 
             return [TextContent(type="text", text=json.dumps(result, indent=2))]

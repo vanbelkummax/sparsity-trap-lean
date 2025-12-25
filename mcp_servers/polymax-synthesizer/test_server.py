@@ -41,3 +41,25 @@ def test_analyze_repo_primary_research(tmp_path):
     assert result["detected_mode"] == "primary_research"
     assert result["repo_structure"]["has_results"] == True
     assert "spatial-transcriptomics" in result["detected_domains"]
+
+def test_ingest_results_from_csv(tmp_path):
+    """Test ingesting results from CSV tables."""
+    import pandas as pd
+    from results_ingester import ingest_results_data
+
+    # Create mock table
+    csv_file = tmp_path / "tables" / "results.csv"
+    csv_file.parent.mkdir(parents=True)
+    df = pd.DataFrame({
+        "Gene": ["GENE1", "GENE2"],
+        "SSIM_Poisson": [0.542, 0.601],
+        "SSIM_MSE": [0.200, 0.189],
+        "Delta_SSIM": [0.342, 0.412]
+    })
+    df.to_csv(csv_file, index=False)
+
+    result = ingest_results_data(str(tmp_path))
+
+    assert len(result["key_findings"]) > 0
+    assert any("SSIM" in f["claim"] for f in result["key_findings"])
+    assert len(result["constraints"]) > 0
