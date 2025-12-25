@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS paper_extractions (
     FOREIGN KEY (paper_id) REFERENCES papers(id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_extractions_paper ON paper_extractions(paper_id);
+
 -- Domains taxonomy
 CREATE TABLE IF NOT EXISTS domains (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,7 +94,8 @@ CREATE TABLE IF NOT EXISTS domain_syntheses (
     paper_ids TEXT,  -- JSON array
     synthesized_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (synthesis_run_id) REFERENCES synthesis_runs(id),
-    FOREIGN KEY (domain_id) REFERENCES domains(id)
+    FOREIGN KEY (domain_id) REFERENCES domains(id),
+    UNIQUE(synthesis_run_id, domain_id)
 );
 
 -- Manuscripts (versioned LaTeX output)
