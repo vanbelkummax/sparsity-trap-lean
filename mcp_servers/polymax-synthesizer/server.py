@@ -8,11 +8,6 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
-from database import Database
-
-# Database path
-DB_PATH = Path(__file__).parent / "papers.db"
-
 # Initialize server
 server = Server("polymax-synthesizer")
 
@@ -113,8 +108,26 @@ async def list_tools() -> list[Tool]:
 
 @server.call_tool()
 async def call_tool(name: str, arguments: Any) -> list[TextContent]:
-    """Handle tool calls (stubs for now)."""
-    return [TextContent(type="text", text=f"Tool '{name}' not yet implemented")]
+    """Handle tool calls with error handling and validation."""
+    try:
+        # Validate arguments
+        if not isinstance(arguments, dict):
+            return [TextContent(
+                type="text",
+                text=f"Invalid arguments: expected dict, got {type(arguments).__name__}"
+            )]
+
+        # Tool implementations will go here in future tasks
+        # For now, return stub response
+        return [TextContent(
+            type="text",
+            text=f"Tool '{name}' not yet implemented"
+        )]
+
+    except Exception as e:
+        import traceback
+        error_msg = f"Error in tool '{name}': {str(e)}\n{traceback.format_exc()}"
+        return [TextContent(type="text", text=error_msg)]
 
 async def main():
     """Run server."""
