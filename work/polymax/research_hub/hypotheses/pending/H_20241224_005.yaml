@@ -1,0 +1,56 @@
+id: H_20241224_005
+status: pending
+created_date: '2024-12-24'
+updated_date: '2024-12-24'
+source: polymax_synthesis
+project: 2um_sparsity_trap
+hypothesis:
+  claim: Negative Binomial NB2 loss will outperform Poisson loss for overdispersed
+    genes (variance >> mean) at 2um resolution, improving SSIM by 5-10% for genes
+    with high biological variability
+  minimal_test: 'Train Hist2ST decoder with NB2 loss (parameterized as Poisson-Gamma
+    mixture) on same 3-fold CV setup. Measure: (1) SSIM for high-variance genes (top
+    quartile), (2) Dispersion parameter learned per gene, (3) Overall SSIM vs Poisson
+    baseline'
+  kill_shot: If SSIM improvement <3% for high-variance genes OR NB2 training unstable
+    (loss divergence) OR dispersion parameter theta not significantly different from
+    1.0 (indicating Poisson is sufficient), abandon
+  ev_estimate: 7.5
+  rationale: 'Poisson assumes mean=variance. Gene expression often has variance >>
+    mean (overdispersion). NB2 explicitly models overdispersion via gamma random effects
+    (Var = mu + mu^2/theta). NegBio-VAE (2024) shows NB outperforms Poisson for overdispersed
+    spike counts by decoupling mean and variance. Your data shows some genes have
+    very high variability (e.g. VIM stromal markers vary by niche). NB2 could better
+    capture this biological heterogeneity. Risk: If most zeros are structural (not
+    overdispersion), NB2 wont help much.'
+paper_sources:
+- arxiv_id: arXiv:2508.05423
+  title: Negative Binomial Variational Autoencoders for Overdispersed Latent Modeling
+  relevance: Proves NB > Poisson for overdispersed count data
+- arxiv_id: arXiv:2501.10655
+  title: Neural INGARCH with NB2
+  relevance: Neural network architectures with NB2 distributions
+cross_field_insights:
+- domain: Neuroscience
+  method: NegBio-VAE for spike counts
+  transfer: Gene expression = count data with overdispersion, same as neural spikes
+- domain: Time Series
+  method: NB-INGARCH for count sequences
+  transfer: Spatial bins = sequence of counts, NB handles varying dispersion
+experiment:
+  started: null
+  completed: null
+  results_path: null
+validation:
+  tested: false
+  outcome: null
+  metrics: []
+  kill_shot_triggered: false
+  notes: null
+next_steps:
+- Implement NB2 loss in PyTorch (log-likelihood with learnable dispersion parameter
+  theta)
+- Add per-gene theta as trainable parameter or predict from network
+- Train on P1+P2, test on P5 (same CV protocol)
+- 'Analyze which genes benefit (hypothesis: high-variance stromal/immune markers)'
+related_hypotheses: []

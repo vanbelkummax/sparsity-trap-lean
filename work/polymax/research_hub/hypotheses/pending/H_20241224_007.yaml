@@ -1,0 +1,59 @@
+id: H_20241224_007
+status: pending
+created_date: '2024-12-24'
+updated_date: '2024-12-24'
+source: polymax_synthesis
+project: 2um_sparsity_trap
+hypothesis:
+  claim: Integrating TICON transformer-based tile contextualizer into Hist2ST decoder
+    will improve 2um SSIM by 8-15% by capturing long-range spatial dependencies that
+    CNN+GNN miss
+  minimal_test: 'Replace Virchow2 frozen encoder with TICON-contextualized embeddings.
+    Keep Hist2ST decoder (CNN+Transformer+GNN paths) and Poisson loss unchanged. Train
+    on P1+P2, test on P5. Measure: (1) SSIM improvement, (2) Glandular structure recovery
+    (visual inspection), (3) VRAM usage (must stay <40GB)'
+  kill_shot: If SSIM improvement <5% OR VRAM exceeds 40GB OR inference time >10min/slide
+    OR glandular boundaries not visibly sharper than baseline, abandon
+  ev_estimate: 8.5
+  rationale: 'Your work shows Hist2ST (with transformer path) > Img2ST, suggesting
+    global context helps. But current Hist2ST transformer operates on patch embeddings,
+    not tile-tile context. TICON learns whole-slide spatial context via masked modeling,
+    similar to BERT. At 2um, tissue microenvironment spans multiple tiles - e.g. crypt
+    architecture extends across 10-20 tiles. TICON contextualizer could encode these
+    long-range dependencies better than local CNN or k=8 GNN. TICON paper shows SoTA
+    on tile-level benchmarks (HEST-Bench, which includes ST data). Direct applicability.
+    Risk: Computational cost may be prohibitive, and TICON weights may not be available
+    (may need to pretrain).'
+paper_sources:
+- arxiv_id: 2512.21331v1
+  title: 'TICON: Transformer-based Tile Contextualizer'
+  relevance: Directly addresses tile context gap, achieves SoTA on HEST-Bench
+- pmid: '41210922'
+  title: Img2ST-Net (Huo et al.)
+  relevance: Baseline to improve upon
+cross_field_insights:
+- domain: NLP
+  method: BERT masked autoencoding for context
+  transfer: Tiles = tokens, WSI = document, context = attention
+- domain: Computer Vision
+  method: Vision transformers for image patches
+  transfer: Histology tiles = image patches with spatial relationships
+experiment:
+  started: null
+  completed: null
+  results_path: null
+validation:
+  tested: false
+  outcome: null
+  metrics: []
+  kill_shot_triggered: false
+  notes: null
+next_steps:
+- Check if TICON weights are publicly available (or contact authors)
+- If not available, pretrain TICON on TCGA histology slides (may take 1-2 weeks)
+- Integrate TICON as encoder replacement in Hist2ST
+- Benchmark VRAM and inference time on single test slide before full training
+- If viable, run 3-fold CV and compare to Poisson baseline (E prime model)
+related_hypotheses:
+- H_20241224_001
+- H_20241224_002

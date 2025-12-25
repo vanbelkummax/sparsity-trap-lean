@@ -1,0 +1,47 @@
+id: H_20241224_010
+status: pending
+created_date: '2024-12-24'
+updated_date: '2024-12-24'
+source: polymax_synthesis
+project: 2um_sparsity_trap
+hypothesis:
+  claim: Newer foundation models (Virchow 2.5, Prov-GigaPath, H-optimus-0) will outperform
+    Virchow2 as encoders for 2um prediction, improving SSIM by 5-10% due to better
+    morphological feature extraction
+  minimal_test: Swap frozen encoder from Virchow2 to each newer model (Virchow 2.5,
+    Prov-GigaPath, H-optimus-0) while keeping Hist2ST decoder + Poisson loss unchanged.
+    Train on P1+P2, test on P5. Measure SSIM and PCC for each encoder
+  kill_shot: If no encoder improves SSIM by ≥3% over Virchow2 baseline OR inference
+    time increases >2x OR embedding dimension incompatibility requires major architecture
+    changes, abandon
+  ev_estimate: 6.0
+  rationale: 'Virchow2 was state-of-art in 2024 but newer models have emerged: Virchow
+    2.5 (improved training), Prov-GigaPath (gigapixel whole-slide pretraining), H-optimus-0
+    (multi-modal histology foundation model). These models may capture finer morphological
+    details relevant at 2um resolution. Your results show encoder quality matters
+    (Hist2ST > Img2ST likely due to better feature extraction). Foundation models
+    are improving rapidly - benchmarking latest models is low-hanging fruit. Risk:
+    Newer models may be optimized for different tasks (diagnosis, not gene expression
+    prediction) and may not transfer well.'
+paper_sources: []
+cross_field_insights: []
+experiment:
+  started: null
+  completed: null
+  results_path: null
+validation:
+  tested: false
+  outcome: null
+  metrics: []
+  kill_shot_triggered: false
+  notes: Quick benchmark - can be done in parallel with other experiments
+next_steps:
+- Check which newer foundation models have publicly available weights
+- Extract embeddings from each model for same test slide
+- Visualize embedding space via t-SNE/UMAP - do they separate tissue types better?
+- If embeddings look promising, do full training
+- 'Consider ensemble: combine embeddings from multiple foundation models (related
+  to H_20241224_002 TICON unification)'
+related_hypotheses:
+- H_20241224_002
+- H_20241224_007

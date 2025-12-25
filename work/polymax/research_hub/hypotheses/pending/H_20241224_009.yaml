@@ -1,0 +1,55 @@
+id: H_20241224_009
+status: pending
+created_date: '2024-12-24'
+updated_date: '2024-12-24'
+source: polymax_synthesis
+project: 2um_sparsity_trap
+hypothesis:
+  claim: Spatial smoothness constraint (neighboring bins should have correlated gene
+    expression) will improve SSIM by 5-12% by regularizing toward biologically plausible
+    spatial patterns
+  minimal_test: 'Add L_spatial = -correlation(predicted[bin_i], predicted[neighbors(bin_i)])
+    to Poisson loss. Use k=8 neighbors (same as GNN). Train with weight alpha=1.0.
+    Measure: (1) Spatial autocorrelation (Morans I) before/after, (2) SSIM improvement,
+    (3) Visual assessment of boundary sharpness'
+  kill_shot: If spatial autocorrelation not significantly higher (p>0.05) OR SSIM
+    degrades OR constraint causes over-smoothing (loss of glandular boundaries), abandon
+  ev_estimate: 6.5
+  rationale: 'Gene expression has strong spatial autocorrelation - nearby cells have
+    similar expression due to shared niche/microenvironment. PINNs use spatial smoothness
+    constraints to improve predictions in under-sampled regions (reduces errors 2
+    orders of magnitude per 2024 research). Your glandular structure results show
+    boundaries are critical - spatial constraint should preserve these while smoothing
+    noise. Hist2ST already has GNN path for neighborhood structure, but its not explicitly
+    optimized for spatial coherence. Adding correlation-based loss could enhance this.
+    Risk: Over-smoothing could blur sharp boundaries (crypt lumen vs epithelium).
+    Need to tune weight carefully or use adaptive weighting based on local variance.'
+paper_sources:
+- title: Adaptive Physics-informed Neural Networks
+  url: https://arxiv.org/html/2503.18181v1
+  relevance: Adaptive sampling for spatial constraints in under-sampled regions
+cross_field_insights:
+- domain: Physics
+  method: Spatial PDE constraints in PINNs
+  transfer: Gene expression follows diffusion-like spatial autocorrelation
+- domain: Image Processing
+  method: Total variation regularization
+  transfer: Preserve sharp boundaries while smoothing noise
+experiment:
+  started: null
+  completed: null
+  results_path: null
+validation:
+  tested: false
+  outcome: null
+  metrics: []
+  kill_shot_triggered: false
+  notes: null
+next_steps:
+- Measure baseline spatial autocorrelation (Morans I) for ground truth and predictions
+- Implement spatial correlation loss using k-nearest neighbors
+- 'Experiment with adaptive weighting: high weight in smooth regions (stroma), low
+  weight at boundaries (epithelium)'
+- Combine with conservation constraint (H_20241224_008) for multi-constraint PINN
+related_hypotheses:
+- H_20241224_008

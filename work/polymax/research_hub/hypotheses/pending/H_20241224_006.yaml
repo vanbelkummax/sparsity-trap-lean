@@ -1,0 +1,51 @@
+id: H_20241224_006
+status: pending
+created_date: '2024-12-24'
+updated_date: '2024-12-24'
+source: polymax_synthesis
+project: 2um_sparsity_trap
+hypothesis:
+  claim: Zero-Inflated Poisson (ZIP) will NOT significantly improve over standard
+    Poisson for 2um spatial transcriptomics because excess zeros are biological (low
+    expression in stroma/lumen), not technical dropout
+  minimal_test: 'Train with ZIP loss (mixture of Poisson + point mass at zero with
+    learnable mixing weight pi). Measure: (1) Learned pi values per gene, (2) SSIM
+    vs Poisson baseline, (3) Zero-prediction accuracy. Hypothesis: pi will be near
+    0 (no zero-inflation needed) for most genes'
+  kill_shot: If pi > 0.3 for majority of genes AND ZIP SSIM improves >5% over Poisson,
+    abandon hypothesis (zero-inflation IS present)
+  ev_estimate: 3.5
+  rationale: 'Recent Genome Biology paper (2022) argues modeling zero inflation is
+    NOT necessary for spatial transcriptomics - excess zeros are biological, not technical.
+    Unlike scRNA-seq (where dropout causes technical zeros), Visium HD bins that are
+    zero simply have no cells/low expression. Your sparsity analysis supports this:
+    zeros correlate with tissue architecture (stromal regions have low epithelial
+    gene expression). ZIP adds complexity without benefit if zeros are structural.
+    Testing this validates/refutes the Genome Biology claim for 2um resolution specifically.
+    Low EV because literature suggests it wont work, but worth validating.'
+paper_sources:
+- doi: 10.1186/s13059-022-02684-0
+  title: Modeling zero inflation is not necessary for spatial transcriptomics
+  relevance: Argues zeros are biological, not technical
+- pmid: '33469598'
+  title: Bayesian model selection reveals biological origins of zero inflation in
+    scRNA-seq
+  relevance: Shows zeros in ST are biological
+cross_field_insights: []
+experiment:
+  started: null
+  completed: null
+  results_path: null
+validation:
+  tested: false
+  outcome: null
+  metrics: []
+  kill_shot_triggered: false
+  notes: This is a NEGATIVE hypothesis - testing to confirm ZIP is NOT needed
+next_steps:
+- Implement ZIP loss (mixture of Poisson + delta at zero)
+- Train and extract learned pi (zero-inflation probability) per gene
+- If pi ~ 0 for most genes → validates that zeros are biological
+- If pi > 0.3 → rethink, maybe technical dropout exists at 2um
+related_hypotheses:
+- H_20241224_005

@@ -1,0 +1,62 @@
+id: H_20241224_008
+status: pending
+created_date: '2024-12-24'
+updated_date: '2024-12-24'
+source: polymax_synthesis
+project: 2um_sparsity_trap
+hypothesis:
+  claim: Adding physics-informed conservation constraints (total RNA per bin is bounded)
+    to Hist2ST decoder will reduce biologically implausible predictions by 15-25%
+    without degrading SSIM
+  minimal_test: 'Modify Poisson loss to include soft constraint: sum(predicted_lambda
+    across all 50 genes) should approximate observed total UMI count per bin. Train
+    on P1+P2 with constraint weight lambda=0.1. Measure: (1) % of bins violating biology
+    (sum > max observed), (2) SSIM vs unconstrained baseline, (3) Pearson correlation
+    for total counts'
+  kill_shot: If SSIM degrades >3% OR constraint doesnt reduce violations by ≥10% OR
+    training becomes unstable (loss oscillation), abandon
+  ev_estimate: 7.0
+  rationale: 'Gene expression obeys conservation laws: total RNA per cell/bin is finite
+    and bounded. Current Poisson models can predict biologically impossible combinations
+    (all 50 genes highly expressed in one bin → total UMI >> max observed). Physics-informed
+    neural networks (PINNs) achieve 2 orders of magnitude accuracy improvement by
+    incorporating physical priors. For gene expression: (1) Conservation: sum(expression)
+    ~ constant, (2) Spatial smoothness: neighboring bins should correlate, (3) Non-negativity:
+    enforced by exp() in Poisson. Your data shows total UMI count varies by tissue
+    region - enforcing this as soft constraint could regularize predictions toward
+    biologically feasible space. Similar to how mass conservation improves fluid dynamics
+    modeling in PINNs.'
+paper_sources:
+- title: Physics-Informed Neural Networks for High-Frequency Problems
+  url: https://www.mdpi.com/2076-3417/14/8/3204
+  relevance: Transfer learning + spatial constraints reduce errors 2 orders of magnitude
+- title: Regularizing Training of PINNs
+  url: https://amostech.com/TechnicalPapers/2024/Machine-Learning-for-SDA/Badura.pdf
+  relevance: Spatial regularization improves PINN training
+cross_field_insights:
+- domain: Physics
+  method: PINNs with conservation laws
+  transfer: Gene expression = count data obeying biological constraints (like mass
+    conservation)
+- domain: Fluid Dynamics
+  method: Soft constraints in loss functions
+  transfer: Total RNA conservation = mass conservation in PDE-constrained optimization
+experiment:
+  started: null
+  completed: null
+  results_path: null
+validation:
+  tested: false
+  outcome: null
+  metrics: []
+  kill_shot_triggered: false
+  notes: null
+next_steps:
+- 'Analyze current model outputs: what % of bins have implausible total counts?'
+- 'Design conservation loss: L_conservation = (sum(predicted) - observed_total)^2'
+- Tune constraint weight lambda via grid search (0.01, 0.1, 1.0, 10.0)
+- Measure biological plausibility before/after constraint
+- 'If successful, explore other constraints: spatial smoothness, gene co-expression
+  networks'
+related_hypotheses:
+- H_20241224_009
