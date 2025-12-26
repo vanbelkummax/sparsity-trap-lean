@@ -1,0 +1,50 @@
+analysis_name: "P1_baseline"
+run_synthetic: False
+cache_dir: "/home/user/work/enact_data/P1_results"
+paths:
+  wsi_path: "/home/user/work/enact_data/P1/square_002um/spatial/tissue_hires_image_converted.tiff"
+  visiumhd_h5_path: "/home/user/work/enact_data/P1/square_002um/filtered_feature_bc_matrix.h5"
+  tissue_positions_path: "/home/user/work/enact_data/P1/square_002um/spatial/tissue_positions_scaled.parquet"
+steps:
+  segmentation: True
+  bin_to_geodataframes: True
+  bin_to_cell_assignment: True
+  cell_type_annotation: True
+params:
+  seg_method: "stardist"
+  image_type: "he"
+  nucleus_expansion: True
+  expand_by_nbins: 2
+  patch_size: 4000
+  bin_representation: "polygon"
+  bin_to_cell_method: "weighted_by_area"
+  cell_annotation_method: "celltypist"
+  cell_typist_model: "Human_Colorectal_Cancer.pkl"
+  use_hvg: True
+  n_hvg: 1000
+  destripe_norm: False
+  n_clusters: 4
+  n_pcs: 250
+  chunks_to_run: []
+stardist:
+  block_size: 2000
+  prob_thresh: 0.005
+  overlap_thresh: 0.001
+  min_overlap: 128
+  context: 128
+  n_tiles: (4,4,1)
+  stardist_modelname: "2D_versatile_he"
+  channel_to_segment: 2
+cell_markers:
+  # Human Colon markers for CellAssign/Sargent (not needed for CellTypist)
+  Epithelial: ["CDH1","EPCAM","CLDN1","CD2"]
+  Enterocytes: ["CD55", "ELF3", "PLIN2", "GSTM3", "KLF5", "CBR1", "APOA1", "CA1", "PDHA1", "EHF"]
+  Goblet_cells: ["MANF", "KRT7", "AQP3", "AGR2", "BACE2", "TFF3", "PHGR1", "MUC4", "MUC13", "GUCA2A"]
+  Enteroendocrine_cells: ["NUCB2", "FABP5", "CPE", "ALCAM", "GCG", "SST", "CHGB", "IAPP", "CHGA", "ENPP2"]
+  Crypt_cells: ["HOPX", "SLC12A2", "MSI1", "SMOC2", "OLFM4", "ASCL2", "PROM1", "BMI1", "EPHB2", "LRIG1"]
+  Endothelial: ["PECAM1","CD34","KDR","CDH5","PROM1","PDPN","TEK","FLT1","VCAM1","PTPRC","VWF","ENG","MCAM","ICAM1","FLT4"]
+  Fibroblast: ["COL1A1","COL3A1","COL5A2","PDGFRA","ACTA2","TCF21","FN"]
+  Smooth_muscle_cell: ["BGN","MYL9","MYLK","FHL2","ITGA1","ACTA2","EHD2","OGN","SNCG","FABP4"]
+  B_cells: ["CD74", "HMGA1", "CD52", "PTPRC", "HLA-DRA", "CD24", "CXCR4", "SPCS3", "LTB", "IGKC"]
+  T_cells: ["JUNB", "S100A4", "CD52", "PFN1P1", "CD81", "EEF1B2P3", "CXCR4", "CREM", "IL32", "TGIF1"]
+  NK_cells: ["S100A4", "IL32", "CXCR4", "FHL2", "IL2RG", "CD69", "CD7", "NKG7", "CD2", "HOPX"]
